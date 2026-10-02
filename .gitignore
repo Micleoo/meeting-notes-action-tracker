@@ -1,0 +1,21 @@
+# Konfigurasi lokal agen dan pencatatan kerja
+AGENTS.md
+CLAUDE.md
+docs/agents/
+.scratch/
+CONTEXT.md
+CONTEXT-MAP.md
+docs/adr/
+
+# Artefak JavaScript lokal
+node_modules/
+.impeccable/
+.env.local
+.env.*.local
+.next/
+node_modules.previous/
+test-results/
+playwright-report/
+*.tsbuildinfo
+
+.next.previous/
