@@ -56,7 +56,7 @@ export async function POST(
     const { error: inviteError } = await admin.auth.admin.inviteUserByEmail(
       email,
       {
-        redirectTo: `${origin}/auth/callback`,
+        redirectTo: inviteRedirect,
         data: { invitation_token: invitation.token },
       },
     );
@@ -74,7 +74,6 @@ export async function POST(
             auth: {
               autoRefreshToken: false,
               persistSession: false,
-              flowType: "implicit",
             },
           },
         );

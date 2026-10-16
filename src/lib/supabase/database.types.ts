@@ -85,6 +85,31 @@ export type Database = {
         Args: { target_member: string; enabled: boolean };
         Returns: undefined;
       };
+      save_meeting_with_participants: {
+        Args: {
+          target_meeting: string | null;
+          target_workspace: string;
+          meeting_title: string;
+          meeting_notes: string;
+          meeting_scheduled_at: string;
+          participant_member_ids: string[];
+        };
+        Returns: string;
+      };
+      save_action_item_with_reminders: {
+        Args: {
+          target_action_item: string | null;
+          target_meeting: string;
+          target_owner_member: string;
+          item_title: string;
+          item_description: string;
+          item_status: "not_started" | "in_progress" | "completed";
+          item_due_at: string | null;
+          item_completed_at: string | null;
+          reminder_schedule: string[];
+        };
+        Returns: string;
+      };
     };
     Enums: {
       workspace_role: "owner" | "member";

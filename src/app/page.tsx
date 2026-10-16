@@ -127,7 +127,6 @@ export default function Home() {
   const [deadlineFilter, setDeadlineFilter] = useState("all");
   const [nameMap, setNameMap] = useState<Record<string, string>>({});
   const [now, setNow] = useState(Date.now());
-  const acceptedInviteTokens = useRef(new Set<string>());
   const selected = data.meetings.find((meeting) => meeting.id === selectedId);
   const unread = data.notifications.filter((item) => !item.read).length;
   const currentMember = members.find(
@@ -320,38 +319,6 @@ export default function Home() {
               "",
           ),
         });
-        const invitationToken =
-          current.user_metadata?.invitation_token ??
-          new URLSearchParams(window.location.search).get("invitation");
-        if (
-          typeof invitationToken === "string" &&
-          !acceptedInviteTokens.current.has(invitationToken)
-        ) {
-          acceptedInviteTokens.current.add(invitationToken);
-          queueMicrotask(() => {
-            void supabase
-              .rpc("accept_workspace_invitation", {
-                invitation_token: invitationToken,
-              })
-              .then(async ({ error: inviteError }) => {
-                if (inviteError) setError(inviteError.message);
-                else {
-                  if (current.user_metadata?.invitation_token)
-                    await supabase.auth.updateUser({
-                      data: {
-                        ...current.user_metadata,
-                        invitation_token: null,
-                      },
-                    });
-                  const cleanUrl = new URL(window.location.href);
-                  cleanUrl.searchParams.delete("invitation");
-                  window.history.replaceState({}, "", cleanUrl.toString());
-                  setToast("Undangan diterima. Workspace sudah tersedia.");
-                  await loadWorkspaces(current.id);
-                }
-              });
-          });
-        }
         void loadWorkspaces(current.id).catch((e) => setError(e.message));
       },
     );
@@ -371,34 +338,6 @@ export default function Home() {
                 "",
             ),
           });
-        const token =
-          signedInUser?.user_metadata?.invitation_token ??
-          new URLSearchParams(window.location.search).get("invitation");
-        if (
-          signedInUser &&
-          typeof token === "string" &&
-          !acceptedInviteTokens.current.has(token)
-        ) {
-          acceptedInviteTokens.current.add(token);
-          const { error: inviteError } = await supabase.rpc(
-            "accept_workspace_invitation",
-            { invitation_token: token },
-          );
-          if (inviteError) setError(inviteError.message);
-          else {
-            if (signedInUser.user_metadata?.invitation_token)
-              await supabase.auth.updateUser({
-                data: {
-                  ...signedInUser.user_metadata,
-                  invitation_token: null,
-                },
-              });
-            const cleanUrl = new URL(window.location.href);
-            cleanUrl.searchParams.delete("invitation");
-            window.history.replaceState({}, "", cleanUrl.toString());
-            await loadWorkspaces(signedInUser.id);
-          }
-        }
         if (signedInUser)
           void loadWorkspaces(signedInUser.id).catch((e) =>
             setError(e.message),
@@ -495,45 +434,23 @@ export default function Home() {
   }
   async function saveMeeting(meeting: Meeting) {
     if (!workspace) return;
-    const row = {
-      workspace_id: workspace.id,
-      created_by_member_id: workspace.memberId,
-      title: meeting.title,
-      notes: meeting.notes,
-      scheduled_at: meeting.time,
-    };
-    const query =
-      meeting.id && data.meetings.some((m) => m.id === meeting.id)
-        ? supabase.from("meetings").update(row).eq("id", meeting.id)
-        : supabase.from("meetings").insert(row).select("id").single();
-    const { data: result, error: saveError } = await query;
+    const exists = meeting.id && data.meetings.some((m) => m.id === meeting.id);
+    const { data: result, error: saveError } = await supabase.rpc(
+      "save_meeting_with_participants",
+      {
+        target_meeting: exists ? meeting.id : null,
+        target_workspace: workspace.id,
+        meeting_title: meeting.title,
+        meeting_notes: meeting.notes,
+        meeting_scheduled_at: meeting.time,
+        participant_member_ids: meeting.participants,
+      },
+    );
     if (saveError) {
       setError(saveError.message);
       return;
     }
-    const id = (result as any)?.id ?? meeting.id;
-    const { error: participantError } = await supabase
-      .from("meeting_participants")
-      .delete()
-      .eq("meeting_id", id);
-    if (participantError) {
-      setError(participantError.message);
-      return;
-    }
-    if (meeting.participants.length) {
-      const { error: insertError } = await supabase
-        .from("meeting_participants")
-        .insert(
-          meeting.participants.map((member_id) => ({
-            meeting_id: id,
-            member_id,
-          })),
-        );
-      if (insertError) {
-        setError(insertError.message);
-        return;
-      }
-    }
+    const id = result ?? meeting.id;
     setEditor(null);
     setSelectedId(id);
     await refresh();
@@ -542,44 +459,25 @@ export default function Home() {
   }
   async function commitAction(item: ActionItem) {
     if (!workspace) return;
-    const row = {
-      meeting_id: item.meetingId,
-      created_by_member_id: workspace.memberId,
-      owner_member_id: item.owner,
-      title: item.title,
-      description: item.description,
-      status: statusToDb[item.status],
-      due_at: item.due || null,
-      completed_at: item.status === "Selesai" ? new Date().toISOString() : null,
-    };
     const exists = data.actions.some((a) => a.id === item.id);
-    const response = exists
-      ? await supabase.from("action_items").update(row).eq("id", item.id)
-      : await supabase.from("action_items").insert(row).select("id").single();
-    if (response.error) {
-      setError(response.error.message);
+    const { data: id, error: saveError } = await supabase.rpc(
+      "save_action_item_with_reminders",
+      {
+        target_action_item: exists ? item.id : null,
+        target_meeting: item.meetingId,
+        target_owner_member: item.owner,
+        item_title: item.title,
+        item_description: item.description,
+        item_status: statusToDb[item.status],
+        item_due_at: item.due || null,
+        item_completed_at:
+          item.status === "Selesai" ? new Date().toISOString() : null,
+        reminder_schedule: item.reminders,
+      },
+    );
+    if (saveError) {
+      setError(saveError.message);
       return;
-    }
-    const id = (response.data as any)?.id ?? item.id;
-    const { error: deleteError } = await supabase
-      .from("reminders")
-      .delete()
-      .eq("action_item_id", id);
-    if (deleteError) {
-      setError(deleteError.message);
-      return;
-    }
-    if (item.reminders.length) {
-      const { error: remindersError } = await supabase.from("reminders").insert(
-        item.reminders.map((scheduled_for) => ({
-          action_item_id: id,
-          scheduled_for,
-        })),
-      );
-      if (remindersError) {
-        setError(remindersError.message);
-        return;
-      }
     }
     setEditor(null);
     setPending(null);

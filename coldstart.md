@@ -377,10 +377,16 @@ Frontend kini memakai Supabase Auth dan database, dengan semua tabel aplikasi di
 
 1. Isi `.env.local` dengan `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, dan `NEXT_PUBLIC_SITE_URL`. Secret key hanya untuk route server undangan; jangan beri awalan `NEXT_PUBLIC_`.
 2. Terapkan migration melalui Supabase CLI yang sudah terhubung ke project development, atau jalankan file migration lewat SQL Editor project kosong. CLI/Docker tidak tersedia di lingkungan implementasi ini, jadi migration belum diterapkan ke project jarak jauh.
-3. Tambahkan URL lokal `/auth/callback` ke daftar Redirect URLs Supabase. Untuk undangan, template Auth harus mengarahkan link verifikasi ke aplikasi agar sesi browser terbentuk; Supabase perlu mengizinkan URL callback yang sama. Aktifkan Google provider dan atur OAuth client/secret serta callback Supabase di Google Console.
+3. Tambahkan URL lokal `/auth/callback` ke daftar Redirect URLs Supabase. Pada template **Invite user**, arahkan tautan langsung ke `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=invite`; untuk **Magic Link** gunakan `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=magiclink`. Karena redirect undangan dan magic link aplikasi sudah berisi parameter `invitation`, bentuk tersebut memakai `&`. Callback memverifikasi token hash dan membuat sesi cookie di server. Tautan bawaan `/auth/v1/verify` dapat mengembalikan token di fragment URL, yang tidak dapat dibaca server callback ini. Aktifkan Google provider dan atur OAuth client/secret serta callback Supabase di Google Console.
 4. Jalankan `npm run dev`. Uji alur email/OAuth dan RLS dengan dua akun di Workspace sama serta akun terpisah.
 
 Pemeriksaan sintaks TypeScript per berkas dan format Prettier lulus. Typecheck penuh tetap berjalan lebih dari tiga menit tanpa diagnostik, termasuk setelah proses `tsc` tertinggal dari percobaan sebelumnya dihentikan; pemeriksaan itu dihentikan agar tidak menumpuk proses. Lint, build, dan uji browser belum terkonfirmasi. Smoke test Auth/RLS belum dijalankan karena Supabase CLI, Docker, dan kanal eksekusi database tidak tersedia di lingkungan ini.
+
+### Perbaikan review integrasi — 2 Oktober 2026
+
+- Migration tambahan `20261002000100_atomic_saves_and_action_creator.sql` mengunci `created_by_member_id` Action item pada database dan menyediakan RPC transaksional untuk menyimpan Meeting/Participant dan Action item/Reminder. Jadwal Reminder yang dihapus dari form ditandai batal, bukan dihapus, agar Notification historis tidak terputus.
+- Callback Auth memverifikasi `token_hash` server-side melalui Supabase Auth, menjaga dukungan PKCE `code`, lalu menerima undangan hanya setelah sesi memiliki claims terverifikasi. Template Invite dan Magic Link harus mengirim `{{ .TokenHash }}` ke URL aplikasi dalam parameter `token_hash` seperti langkah konfigurasi di atas. Pastikan URL callback yang diizinkan sesuai dengan domain aplikasi.
+- Migration baru belum dijalankan ke Supabase development dan konfigurasi provider/template/email belum dapat diverifikasi tanpa akses dashboard project. Tidak ada scheduler atau pengiriman email Reminder yang ditambahkan.
 
 ## 10. Riwayat Frontend Mock — 28 September 2026
 
