@@ -83,11 +83,12 @@ const nav = [
   { view: "notifications", label: "Notifikasi", icon: Bell },
 ] as const;
 const emptyData: Data = { meetings: [], actions: [], notifications: [] };
-const statusToDb: Record<Status, string> = {
-  "Belum Mulai": "not_started",
-  Dikerjakan: "in_progress",
-  Selesai: "completed",
-};
+const statusToDb: Record<Status, "not_started" | "in_progress" | "completed"> =
+  {
+    "Belum Mulai": "not_started",
+    Dikerjakan: "in_progress",
+    Selesai: "completed",
+  };
 const statusFromDb: Record<string, Status> = {
   not_started: "Belum Mulai",
   in_progress: "Dikerjakan",
