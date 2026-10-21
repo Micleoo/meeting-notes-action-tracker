@@ -379,6 +379,7 @@ Frontend kini memakai Supabase Auth dan database, dengan semua tabel aplikasi di
 2. Terapkan migration melalui Supabase CLI yang sudah terhubung ke project development, atau jalankan file migration lewat SQL Editor project kosong. CLI/Docker tidak tersedia di lingkungan implementasi ini, jadi migration belum diterapkan ke project jarak jauh.
 3. Tambahkan URL lokal `/auth/callback` ke daftar Redirect URLs Supabase. Pada template **Invite user**, arahkan tautan langsung ke `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=invite`; untuk **Magic Link** gunakan `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=magiclink`. Karena redirect undangan dan magic link aplikasi sudah berisi parameter `invitation`, bentuk tersebut memakai `&`. Callback memverifikasi token hash dan membuat sesi cookie di server. Tautan bawaan `/auth/v1/verify` dapat mengembalikan token di fragment URL, yang tidak dapat dibaca server callback ini. Aktifkan Google provider dan atur OAuth client/secret serta callback Supabase di Google Console.
 4. Jalankan `npm run dev`. Uji alur email/OAuth dan RLS dengan dua akun di Workspace sama serta akun terpisah.
+5. Jalankan `supabase test db` untuk memeriksa regression test akses database pada `supabase/tests/`.
 
 Pemeriksaan sintaks TypeScript per berkas dan format Prettier lulus. Typecheck penuh tetap berjalan lebih dari tiga menit tanpa diagnostik, termasuk setelah proses `tsc` tertinggal dari percobaan sebelumnya dihentikan; pemeriksaan itu dihentikan agar tidak menumpuk proses. Lint, build, dan uji browser belum terkonfirmasi. Smoke test Auth/RLS belum dijalankan karena Supabase CLI, Docker, dan kanal eksekusi database tidak tersedia di lingkungan ini.
 
@@ -387,6 +388,11 @@ Pemeriksaan sintaks TypeScript per berkas dan format Prettier lulus. Typecheck p
 - Migration tambahan `20261002000100_atomic_saves_and_action_creator.sql` mengunci `created_by_member_id` Action item pada database dan menyediakan RPC transaksional untuk menyimpan Meeting/Participant dan Action item/Reminder. Jadwal Reminder yang dihapus dari form ditandai batal, bukan dihapus, agar Notification historis tidak terputus.
 - Callback Auth memverifikasi `token_hash` server-side melalui Supabase Auth, menjaga dukungan PKCE `code`, lalu menerima undangan hanya setelah sesi memiliki claims terverifikasi. Template Invite dan Magic Link harus mengirim `{{ .TokenHash }}` ke URL aplikasi dalam parameter `token_hash` seperti langkah konfigurasi di atas. Pastikan URL callback yang diizinkan sesuai dengan domain aplikasi.
 - Migration baru belum dijalankan ke Supabase development dan konfigurasi provider/template/email belum dapat diverifikasi tanpa akses dashboard project. Tidak ada scheduler atau pengiriman email Reminder yang ditambahkan.
+
+### Hardening RLS — 21 Oktober 2026
+
+- Migration `20261021000100_restrict_destructive_workspace_writes.sql` menghapus hak Member untuk menghapus Meeting secara permanen, karena Archive adalah alur yang dapat dipulihkan. Penghapusan langsung Reminder dan perubahan langsung jadwal Reminder juga dibatasi agar Notification historis tetap terhubung; aplikasi tetap menyimpan jadwal lewat RPC.
+- Regression test pgTAP ada di `supabase/tests/workspace_destructive_writes.test.sql`. Pengujian belum dijalankan karena Supabase CLI, Docker, dan `psql` tidak tersedia di lingkungan ini.
 
 ## 10. Riwayat Frontend Mock — 28 September 2026
 
