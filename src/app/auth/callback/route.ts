@@ -13,19 +13,26 @@ export async function GET(request: NextRequest) {
   const tokenHash = request.nextUrl.searchParams.get("token_hash");
   const tokenType = request.nextUrl.searchParams.get("type");
   const invitation = request.nextUrl.searchParams.get("invitation");
+  const authAction = request.nextUrl.searchParams.get("authAction");
+  let passwordRecovery = false;
 
   if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) return callbackError(request, error.message);
+    passwordRecovery = authAction === "recovery";
   } else if (tokenHash) {
-    if (!tokenType || !["invite", "magiclink", "email"].includes(tokenType)) {
+    if (
+      !tokenType ||
+      !["invite", "magiclink", "email", "recovery"].includes(tokenType)
+    ) {
       return callbackError(request, "Tautan autentikasi tidak valid.");
     }
     const { error } = await supabase.auth.verifyOtp({
       token_hash: tokenHash,
-      type: tokenType as "invite" | "magiclink" | "email",
+      type: tokenType as "invite" | "magiclink" | "email" | "recovery",
     });
     if (error) return callbackError(request, error.message);
+    passwordRecovery = tokenType === "recovery";
   } else if (invitation) {
     return callbackError(
       request,
@@ -43,6 +50,9 @@ export async function GET(request: NextRequest) {
     });
     if (error) return callbackError(request, error.message);
   }
+
+  if (passwordRecovery)
+    return NextResponse.redirect(new URL("/?authAction=recovery", request.url));
 
   return NextResponse.redirect(new URL("/", request.url));
 }

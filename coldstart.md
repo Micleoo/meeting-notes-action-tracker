@@ -394,6 +394,12 @@ Pemeriksaan sintaks TypeScript per berkas dan format Prettier lulus. Typecheck p
 - Migration `20261021000100_restrict_destructive_workspace_writes.sql` menghapus hak Member untuk menghapus Meeting secara permanen, karena Archive adalah alur yang dapat dipulihkan. Penghapusan langsung Reminder dan perubahan langsung jadwal Reminder juga dibatasi agar Notification historis tetap terhubung; aplikasi tetap menyimpan jadwal lewat RPC.
 - Regression test pgTAP ada di `supabase/tests/workspace_destructive_writes.test.sql`. Pengujian belum dijalankan karena Supabase CLI, Docker, dan `psql` tidak tersedia di lingkungan ini.
 
+### Pemulihan kata sandi — 23 Oktober 2026
+
+- Login email menyediakan permintaan reset kata sandi dengan pesan netral untuk menghindari pengungkapan apakah email terdaftar. Callback memverifikasi token `recovery` dan membuat sesi cookie sebelum form memperbarui kata sandi.
+- Tambahkan URL `/auth/callback` pada Redirect URLs Supabase. Template **Reset Password** perlu mengarahkan tautan ke `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=recovery`; nilai `redirectTo` aplikasi menyertakan `?authAction=recovery`.
+- Uji Playwright baru memeriksa permintaan email reset. Pengujian browser belum berjalan karena server Next.js lokal tidak mulai; typecheck dan lint juga tidak selesai dalam pemeriksaan ini. Pemeriksaan sintaks TypeScript, Prettier untuk berkas TS/MD, dan `git diff --check` lulus.
+
 ## 10. Riwayat Frontend Mock — 28 September 2026
 
 Frontend interaktif mock telah diimplementasikan pada Next.js App Router + TypeScript. Tailwind CSS 4 dipasang melalui PostCSS; token warna warm latte dan Plus Jakarta Sans disertakan secara lokal melalui Fontsource.

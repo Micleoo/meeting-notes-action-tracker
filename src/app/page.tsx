@@ -116,10 +116,14 @@ export default function Home() {
   const [reassign, setReassign] = useState<Record<string, string>>({});
   const [toast, setToast] = useState("");
   const [error, setError] = useState("");
+  const [resetMessage, setResetMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [resetMode, setResetMode] = useState(false);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -301,13 +305,15 @@ export default function Home() {
   }, []);
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
         const current = session?.user;
+        if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
         if (!current) {
           setUser(null);
           setWorkspaces([]);
           setWorkspace(null);
           setView("login");
+          setPasswordRecovery(false);
           return;
         }
         setUser({
@@ -327,6 +333,9 @@ export default function Home() {
       .getUser()
       .then(async ({ data: result, error: authError }) => {
         const signedInUser = result.user;
+        const isRecoveryRedirect =
+          new URLSearchParams(window.location.search).get("authAction") ===
+          "recovery";
         if (authError) setError(authError.message);
         if (signedInUser)
           setUser({
@@ -339,6 +348,7 @@ export default function Home() {
                 "",
             ),
           });
+        if (signedInUser && isRecoveryRedirect) setPasswordRecovery(true);
         if (signedInUser)
           void loadWorkspaces(signedInUser.id).catch((e) =>
             setError(e.message),
@@ -388,6 +398,53 @@ export default function Home() {
       else setToast("Berhasil masuk.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Autentikasi gagal.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function sendPasswordReset(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+        email,
+        {
+          redirectTo: `${location.origin}/auth/callback?authAction=recovery`,
+        },
+      );
+      if (resetError) throw resetError;
+      setResetMessage(
+        "Jika alamat tersebut terdaftar, tautan reset akan dikirim ke email.",
+      );
+      setResetMode(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Permintaan reset gagal.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function updatePassword(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    if (password !== confirmPassword) {
+      setError("Konfirmasi kata sandi belum sama.");
+      setBusy(false);
+      return;
+    }
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({
+        password,
+      });
+      if (updateError) throw updateError;
+      setPasswordRecovery(false);
+      setPassword("");
+      setConfirmPassword("");
+      window.history.replaceState({}, "", "/");
+      setToast("Kata sandi berhasil diperbarui.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Kata sandi gagal diperbarui.");
     } finally {
       setBusy(false);
     }
@@ -601,6 +658,53 @@ export default function Home() {
     }
   }
 
+  if (passwordRecovery)
+    return (
+      <main className="auth">
+        <section className="auth-main">
+          <Brand />
+          <div className="auth-form">
+            <h1>Buat kata sandi baru</h1>
+            <p>Gunakan kata sandi baru untuk masuk kembali ke Workspace.</p>
+            <form onSubmit={updatePassword}>
+              <Field label="Kata sandi baru">
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </Field>
+              <Field label="Konfirmasi kata sandi">
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              </Field>
+              <button className="primary full" disabled={busy}>
+                Perbarui kata sandi
+                <ChevronRight size={18} />
+              </button>
+            </form>
+            {error && (
+              <p className="error-text" role="alert">
+                {error}
+              </p>
+            )}
+          </div>
+          <span className="auth-footer">
+            Sedikit lebih teratur. Selangkah lebih maju.
+          </span>
+        </section>
+      </main>
+    );
+
   if (!user)
     return (
       <main className="auth">
@@ -608,21 +712,33 @@ export default function Home() {
           <Brand />
           <div className="auth-form">
             <h1>
-              Meeting selesai.
-              <br />
-              Langkah berikutnya jelas.
+              {resetMode ? (
+                "Pulihkan akses Workspace"
+              ) : (
+                <>
+                  Meeting selesai.
+                  <br />
+                  Langkah berikutnya jelas.
+                </>
+              )}
             </h1>
             <p>
-              Satu tempat untuk catatan, Owner, dan setiap tindak lanjut tim.
+              {resetMode
+                ? "Masukkan email akun untuk menerima tautan reset kata sandi."
+                : "Satu tempat untuk catatan, Owner, dan setiap tindak lanjut tim."}
             </p>
-            <button className="secondary full" onClick={googleLogin}>
-              Lanjut dengan Google
-            </button>
-            <div className="divider">
-              atau {authMode === "login" ? "masuk" : "daftar"} dengan email
-            </div>
-            <form onSubmit={authSubmit}>
-              {authMode === "signup" && (
+            {!resetMode && (
+              <button className="secondary full" onClick={googleLogin}>
+                Lanjut dengan Google
+              </button>
+            )}
+            {!resetMode && (
+              <div className="divider">
+                atau {authMode === "login" ? "masuk" : "daftar"} dengan email
+              </div>
+            )}
+            <form onSubmit={resetMode ? sendPasswordReset : authSubmit}>
+              {!resetMode && authMode === "signup" && (
                 <Field label="Nama">
                   <input name="name" required autoComplete="name" />
                 </Field>
@@ -636,28 +752,59 @@ export default function Home() {
                   autoComplete="email"
                 />
               </Field>
-              <Field label="Kata sandi">
-                <input
-                  type="password"
-                  required
-                  minLength={6}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete={
-                    authMode === "login" ? "current-password" : "new-password"
-                  }
-                />
-              </Field>
+              {!resetMode && (
+                <Field label="Kata sandi">
+                  <input
+                    type="password"
+                    required
+                    minLength={6}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete={
+                      authMode === "login" ? "current-password" : "new-password"
+                    }
+                  />
+                </Field>
+              )}
               <button className="primary full" disabled={busy}>
-                {authMode === "login" ? "Masuk ke Workspace" : "Buat akun"}
+                {resetMode
+                  ? "Kirim tautan reset"
+                  : authMode === "login"
+                    ? "Masuk ke Workspace"
+                    : "Buat akun"}
                 <ChevronRight size={18} />
               </button>
             </form>
+            {authMode === "login" && !resetMode && (
+              <button
+                className="text-button"
+                onClick={() => {
+                  setResetMode(true);
+                  setError("");
+                  setResetMessage("");
+                }}
+              >
+                Lupa kata sandi?
+              </button>
+            )}
+            {resetMode && (
+              <button
+                className="text-button"
+                onClick={() => {
+                  setResetMode(false);
+                  setError("");
+                }}
+              >
+                Kembali ke masuk
+              </button>
+            )}
             <button
               className="text-button"
-              onClick={() =>
-                setAuthMode(authMode === "login" ? "signup" : "login")
-              }
+              hidden={resetMode}
+              onClick={() => {
+                setAuthMode(authMode === "login" ? "signup" : "login");
+                setError("");
+              }}
             >
               {authMode === "login"
                 ? "Belum punya akun? Daftar"
@@ -668,10 +815,17 @@ export default function Home() {
                 {error}
               </p>
             )}
-            <p className="demo-note">
-              Akun dan Workspace memakai Supabase. Konfirmasi email mungkin
-              diperlukan.
-            </p>
+            {resetMessage && (
+              <p role="status" className="success-text">
+                {resetMessage}
+              </p>
+            )}
+            {!resetMode && (
+              <p className="demo-note">
+                Akun dan Workspace memakai Supabase. Konfirmasi email mungkin
+                diperlukan.
+              </p>
+            )}
           </div>
           <span className="auth-footer">
             Sedikit lebih teratur. Selangkah lebih maju.

@@ -1527,6 +1527,7 @@ input[type="radio"] {
 }
 
 .error-text { color: #9b3f31; font-size: .9rem; }
+.success-text { color: #47764f; font-size: .9rem; }
 .error-banner { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; padding: .75rem 1rem; border: 1px solid #e7b4a8; border-radius: 12px; background: #fff1ed; color: #79372d; }
 .invite-form { display: flex; align-items: end; gap: 1rem; margin: 1.25rem 0; }
 .invite-form .field { flex: 1; }
