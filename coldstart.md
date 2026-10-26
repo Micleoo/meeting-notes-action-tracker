@@ -398,7 +398,14 @@ Pemeriksaan sintaks TypeScript per berkas dan format Prettier lulus. Typecheck p
 
 - Login email menyediakan permintaan reset kata sandi dengan pesan netral untuk menghindari pengungkapan apakah email terdaftar. Callback memverifikasi token `recovery` dan membuat sesi cookie sebelum form memperbarui kata sandi.
 - Tambahkan URL `/auth/callback` pada Redirect URLs Supabase. Template **Reset Password** perlu mengarahkan tautan ke `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=recovery`; nilai `redirectTo` aplikasi menyertakan `?authAction=recovery`.
-- Uji Playwright baru memeriksa permintaan email reset. Pengujian browser belum berjalan karena server Next.js lokal tidak mulai; typecheck dan lint juga tidak selesai dalam pemeriksaan ini. Pemeriksaan sintaks TypeScript, Prettier untuk berkas TS/MD, dan `git diff --check` lulus.
+- Uji Playwright baru memeriksa permintaan email reset. Pengujian browser belum berjalan karena server Next.js lokal tidak mulai. Pada pemeriksaan saat itu, typecheck dan lint belum selesai; pemeriksaan sintaks TypeScript, Prettier untuk berkas TS/MD, dan `git diff --check` lulus.
+
+### Verifikasi alur MVP Supabase development — 26 Oktober 2026
+
+- Verifikasi alur lintas-Member belum dilakukan. Tiket pemeriksaan proyek, migration/RLS, dan konfigurasi Auth development masih menjadi prasyarat yang belum terpenuhi.
+- `npm run typecheck` pada pemeriksaan ini tidak selesai setelah lebih dari tiga menit tanpa diagnostik dan dihentikan. Lint, build, serta uji browser belum dijalankan ulang; catatan sebelumnya menyebut server Next.js lokal tidak mulai.
+- Migration dan regression test RLS belum diterapkan/dijalankan: Supabase CLI, Docker, dan `psql` tidak tersedia pada lingkungan ini. Login Google, template email, undangan, kecocokan email, dan persistensi sesi juga belum diuji pada project Supabase development.
+- Tidak ada perubahan atau deployment ke production. Ulangi pemeriksaan setelah tiket 1–3 selesai dan akses project development tersedia; setelah itu jalankan skenario lintas-Member dan perbarui status ini berdasarkan hasil aktual.
 
 ## 10. Riwayat Frontend Mock — 28 September 2026
 
