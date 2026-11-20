@@ -4,7 +4,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -148,18 +147,29 @@ export default function Home() {
 
   const loadWorkspaces = useCallback(
     async (profileId: string) => {
-      const { data: rows, error: loadError } = await supabase
+      const { data: memberships, error: loadError } = await supabase
         .from("workspace_members")
-        .select("id,workspace_id,role,workspaces(id,name)")
+        .select("id,workspace_id,role")
         .eq("profile_id", profileId)
         .is("left_at", null);
       if (loadError) throw loadError;
-      const mapped = (rows ?? []).map((row: any) => ({
-        id: row.workspaces.id as string,
-        name: row.workspaces.name as string,
-        role: row.role as Member["role"],
-        memberId: row.id as string,
-      }));
+      const workspaceIds = [...new Set((memberships ?? []).map((row) => row.workspace_id))];
+      const { data: workspaceRows, error: workspaceError } = workspaceIds.length
+        ? await supabase.from("workspaces").select("id,name").in("id", workspaceIds)
+        : { data: [], error: null };
+      if (workspaceError) throw workspaceError;
+      const workspaceById = new Map((workspaceRows ?? []).map((row) => [row.id, row]));
+      const mapped = (memberships ?? []).flatMap((membership) => {
+        const row = workspaceById.get(membership.workspace_id);
+        return row
+          ? [{
+              id: row.id,
+              name: row.name,
+              role: membership.role,
+              memberId: membership.id,
+            }]
+          : [];
+      });
       setWorkspaces(mapped);
       if (mapped.length === 1) {
         setWorkspace(mapped[0]);
@@ -175,19 +185,17 @@ export default function Home() {
       setBusy(true);
       setError("");
       try {
-        const results: any[] = await Promise.all<any>([
+        const results = await Promise.all([
           supabase
             .from("workspace_members")
             .select(
-              "id,profile_id,role,email_reminders_enabled,profiles(full_name)",
+              "id,profile_id,role,email_reminders_enabled",
             )
             .eq("workspace_id", active.id)
             .is("left_at", null),
           supabase
             .from("meetings")
-            .select(
-              "id,title,notes,scheduled_at,archived_at,meeting_participants(member_id)",
-            )
+            .select("id,title,notes,scheduled_at,archived_at")
             .eq("workspace_id", active.id)
             .order("scheduled_at", { ascending: false }),
           supabase
@@ -202,16 +210,14 @@ export default function Home() {
                   .from("meetings")
                   .select("id")
                   .eq("workspace_id", active.id)
-              ).data?.map((m: any) => m.id) ?? [],
+              ).data?.map((meeting) => meeting.id) ?? [],
             ),
           supabase
             .from("reminders")
             .select("id,action_item_id,scheduled_for,cancelled_at"),
           supabase
             .from("notifications")
-            .select(
-              "id,title,created_at,read_at,reminder_id,reminders(action_item_id)",
-            )
+            .select("id,title,created_at,read_at,reminder_id")
             .eq("recipient_member_id", active.memberId)
             .order("created_at", { ascending: false }),
           active.role === "owner"
@@ -237,13 +243,23 @@ export default function Home() {
           reminderRes,
           notificationRes,
           inviteRes,
-        ].find((r: any) => r.error);
+        ].find((result) => result.error);
         if (failure?.error) throw failure.error;
         const memberRows = memberRes.data ?? [];
-        const mappedMembers: Member[] = memberRows.map((m: any) => ({
+        const { data: profileRows, error: profileError } = memberRows.length
+          ? await supabase
+              .from("profiles")
+              .select("id,full_name")
+              .in("id", memberRows.map((member) => member.profile_id))
+          : { data: [], error: null };
+        if (profileError) throw profileError;
+        const profileNames = new Map(
+          (profileRows ?? []).map((profile) => [profile.id, profile.full_name]),
+        );
+        const mappedMembers: Member[] = memberRows.map((m) => ({
           id: m.id,
           profileId: m.profile_id,
-          name: m.profiles?.full_name || "Member",
+          name: profileNames.get(m.profile_id) || "Member",
           email: "",
           role: m.role,
           reminders: m.email_reminders_enabled,
@@ -253,18 +269,30 @@ export default function Home() {
         );
         setMembers(mappedMembers);
         setNameMap(names);
-        const meetings: Meeting[] = (meetingRes.data ?? []).map((m: any) => ({
+        const meetingRows = meetingRes.data ?? [];
+        const { data: participantRows, error: participantError } = meetingRows.length
+          ? await supabase
+              .from("meeting_participants")
+              .select("meeting_id,member_id")
+              .in("meeting_id", meetingRows.map((meeting) => meeting.id))
+          : { data: [], error: null };
+        if (participantError) throw participantError;
+        const participantsByMeeting = new Map<string, string[]>();
+        for (const participant of participantRows ?? []) {
+          const participants = participantsByMeeting.get(participant.meeting_id) ?? [];
+          participants.push(participant.member_id);
+          participantsByMeeting.set(participant.meeting_id, participants);
+        }
+        const meetings: Meeting[] = meetingRows.map((m) => ({
           id: m.id,
           title: m.title,
           notes: m.notes ?? "",
           time: m.scheduled_at,
-          participants: (m.meeting_participants ?? []).map(
-            (p: any) => p.member_id,
-          ),
+          participants: participantsByMeeting.get(m.id) ?? [],
           archived: !!m.archived_at,
         }));
         const reminderRows = reminderRes.data ?? [];
-        const actions: ActionItem[] = (actionRes.data ?? []).map((a: any) => ({
+        const actions: ActionItem[] = (actionRes.data ?? []).map((a) => ({
           id: a.id,
           meetingId: a.meeting_id,
           title: a.title,
@@ -273,15 +301,29 @@ export default function Home() {
           due: a.due_at ?? "",
           status: statusFromDb[a.status] ?? "Belum Mulai",
           reminders: reminderRows
-            .filter((r: any) => r.action_item_id === a.id && !r.cancelled_at)
-            .map((r: any) => r.scheduled_for)
+            .filter((reminder) => reminder.action_item_id === a.id && !reminder.cancelled_at)
+            .map((reminder) => reminder.scheduled_for)
             .sort(),
           archived: !!a.archived_at,
         }));
+        const notificationRows = notificationRes.data ?? [];
+        const reminderIds = notificationRows.flatMap((notification) =>
+          notification.reminder_id ? [notification.reminder_id] : [],
+        );
+        const { data: notificationReminders, error: notificationReminderError } = reminderIds.length
+          ? await supabase
+              .from("reminders")
+              .select("id,action_item_id")
+              .in("id", reminderIds)
+          : { data: [], error: null };
+        if (notificationReminderError) throw notificationReminderError;
+        const actionByReminder = new Map(
+          (notificationReminders ?? []).map((reminder) => [reminder.id, reminder.action_item_id]),
+        );
         const notifications: Notification[] = (notificationRes.data ?? []).map(
-          (n: any) => ({
+          (n) => ({
             id: n.id,
-            actionId: n.reminders?.action_item_id ?? "",
+            actionId: n.reminder_id ? actionByReminder.get(n.reminder_id) ?? "" : "",
             title: n.title,
             time: n.created_at,
             read: !!n.read_at,
@@ -518,7 +560,7 @@ export default function Home() {
   async function commitAction(item: ActionItem) {
     if (!workspace) return;
     const exists = data.actions.some((a) => a.id === item.id);
-    const { data: id, error: saveError } = await supabase.rpc(
+    const { error: saveError } = await supabase.rpc(
       "save_action_item_with_reminders",
       {
         target_action_item: exists ? item.id : null,
